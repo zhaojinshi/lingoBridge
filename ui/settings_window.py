@@ -1,0 +1,615 @@
+from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, 
+                               QLineEdit, QTextEdit, QPushButton, QMessageBox, QComboBox,
+                               QListWidget, QListWidgetItem, QStackedWidget, QWidget, QFrame, QScrollArea, QKeySequenceEdit, QStyle)
+from PySide6.QtCore import Qt, QSize
+from PySide6.QtGui import QIcon, QKeySequence, QColor, QPainter, QPixmap, QPen
+from core.config import load_app_config, save_app_config, ICON_PATH, USER_DATA_DIR
+
+class SettingsWindow(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("⚙️ 设置 - lingoBridge")
+        self.setFixedSize(750, 580)
+        
+        icon_file = ICON_PATH / "icon.ico"
+        if icon_file.exists():
+            self.setWindowIcon(QIcon(str(icon_file)))
+            
+        self.setAttribute(Qt.WA_StyledBackground, True)
+        self.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
+
+        self.init_ui()
+        self._load_current()
+
+    def init_ui(self):
+        main_layout = QHBoxLayout(self)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(0)
+
+        # ================= Sidebar =================
+        self.sidebar = QListWidget()
+        self.sidebar.setObjectName("sidebar")
+        self.sidebar.setFixedWidth(200)
+        self.sidebar.setFocusPolicy(Qt.NoFocus)
+        self.sidebar.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.sidebar.currentRowChanged.connect(self.change_page)
+
+        items = [
+            ("AI 翻译模型", QStyle.SP_ComputerIcon),
+            ("语音与 TTS", QStyle.SP_MediaVolume),
+            ("通用与外观", QStyle.SP_FileDialogDetailedView),
+        ]
+        for item_text, icon_type in items:
+            item = QListWidgetItem(item_text)
+            item.setIcon(self.style().standardIcon(icon_type))
+            item.setSizeHint(QSize(200, 50))
+            self.sidebar.addItem(item)
+
+        # ================= Right Content Area =================
+        self.right_widget = QWidget()
+        self.right_widget.setObjectName("rightWidget")
+        right_layout = QVBoxLayout(self.right_widget)
+        right_layout.setContentsMargins(30, 30, 30, 20)
+        right_layout.setSpacing(20)
+
+        self.stacked_widget = QStackedWidget()
+        
+        self.page_ai = self.create_ai_page()
+        self.page_tts = self.create_tts_page()
+        self.page_general = self.create_general_page()
+
+        self.stacked_widget.addWidget(self.page_ai)
+        self.stacked_widget.addWidget(self.page_tts)
+        self.stacked_widget.addWidget(self.page_general)
+
+        # ================= Bottom Buttons =================
+        btn_layout = QHBoxLayout()
+        btn_layout.addStretch()
+        
+        self.cancel_btn = QPushButton("取消")
+        self.cancel_btn.setObjectName("cancelBtn")
+        self.cancel_btn.setCursor(Qt.PointingHandCursor)
+        self.cancel_btn.clicked.connect(self.reject)
+        
+        self.save_btn = QPushButton("保存配置")
+        self.save_btn.setObjectName("saveBtn")
+        self.save_btn.setCursor(Qt.PointingHandCursor)
+        self.save_btn.clicked.connect(self.save_settings)
+        
+        btn_layout.addWidget(self.cancel_btn)
+        btn_layout.addWidget(self.save_btn)
+
+        right_layout.addWidget(self.stacked_widget)
+        right_layout.addLayout(btn_layout)
+
+        main_layout.addWidget(self.sidebar)
+        main_layout.addWidget(self.right_widget)
+
+        self.sidebar.setCurrentRow(0)
+
+    def change_page(self, index):
+        self.stacked_widget.setCurrentIndex(index)
+
+    def _tinted_standard_icon(self, icon_type, color):
+        """Recolor a native Qt icon so it remains legible in both themes."""
+        source = self.style().standardIcon(icon_type).pixmap(18, 18)
+        tinted = source.copy()
+        painter = QPainter(tinted)
+        painter.setCompositionMode(QPainter.CompositionMode_SourceIn)
+        painter.fillRect(tinted.rect(), QColor(color))
+        painter.end()
+        return QIcon(tinted)
+
+    def _apply_sidebar_icons(self, color):
+        icon_types = (
+            QStyle.SP_ComputerIcon,
+            QStyle.SP_MediaVolume,
+            QStyle.SP_FileDialogDetailedView,
+        )
+        for row, icon_type in enumerate(icon_types):
+            self.sidebar.item(row).setIcon(self._tinted_standard_icon(icon_type, color))
+
+    def _combo_arrow_asset(self, theme_name, color):
+        """Create a tiny antialiased chevron asset for a seamless combo box."""
+        USER_DATA_DIR.mkdir(parents=True, exist_ok=True)
+        path = USER_DATA_DIR / f"combo-arrow-{theme_name}.png"
+        pixmap = QPixmap(12, 8)
+        pixmap.fill(Qt.transparent)
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setPen(QPen(QColor(color), 1.6, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
+        painter.drawLine(2, 2, 6, 6)
+        painter.drawLine(6, 6, 10, 2)
+        painter.end()
+        pixmap.save(str(path), "PNG")
+        return str(path).replace("\\", "/")
+
+    def create_card(self, title, description, inner_layout):
+        card = QFrame()
+        card.setProperty("class", "settings-card")
+        card_layout = QVBoxLayout(card)
+        card_layout.setContentsMargins(20, 20, 20, 20)
+        card_layout.setSpacing(15)
+
+        header_layout = QVBoxLayout()
+        header_layout.setSpacing(4)
+        title_lbl = QLabel(title)
+        title_lbl.setProperty("class", "card-title")
+        header_layout.addWidget(title_lbl)
+        
+        if description:
+            desc_lbl = QLabel(description)
+            desc_lbl.setProperty("class", "card-desc")
+            desc_lbl.setWordWrap(True)
+            header_layout.addWidget(desc_lbl)
+        
+        card_layout.addLayout(header_layout)
+        
+        divider = QFrame()
+        divider.setFrameShape(QFrame.HLine)
+        divider.setProperty("class", "card-divider")
+        card_layout.addWidget(divider)
+        
+        card_layout.addLayout(inner_layout)
+        return card
+
+    def create_ai_page(self):
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(20)
+
+        # Doubao Card
+        v_layout = QVBoxLayout()
+        v_layout.setSpacing(10)
+
+        self.key_input = QLineEdit()
+        self.key_input.setEchoMode(QLineEdit.Password)
+        self.key_input.setPlaceholderText("例如: sk-xxxxxxxx...")
+        
+        key_label = QLabel("API Key")
+        key_label.setProperty("class", "input-label")
+        v_layout.addWidget(key_label)
+        v_layout.addWidget(self.key_input)
+
+        self.ep_input = QLineEdit()
+        self.ep_input.setPlaceholderText("例如: ep-2024xxxxxx-xxxxx 或 gpt-4o")
+        
+        ep_label = QLabel("模型名称或接入点 (Model)")
+        ep_label.setProperty("class", "input-label")
+        v_layout.addWidget(ep_label)
+        v_layout.addWidget(self.ep_input)
+        
+        self.base_url_input = QLineEdit()
+        self.base_url_input.setPlaceholderText("例如: https://ark.cn-beijing.volces.com/api/v3")
+        
+        base_url_label = QLabel("API Base URL")
+        base_url_label.setProperty("class", "input-label")
+        v_layout.addWidget(base_url_label)
+        v_layout.addWidget(self.base_url_input)
+
+        card = self.create_card(
+            "AI 大模型配置 (兼容 OpenAI 格式)", 
+            "填写配置以启用高级AI翻译。如果留空，系统将默认回退到基础的 Google 纯享翻译模式。", 
+            v_layout
+        )
+        layout.addWidget(card)
+        layout.addStretch()
+        return page
+
+    def create_tts_page(self):
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(20)
+
+        # Engine Card
+        engine_layout = QVBoxLayout()
+        engine_layout.setSpacing(10)
+        
+        self.tts_combo = QComboBox()
+        self.tts_combo.addItems(["☁️ 纯云端语音 (发音纯正/依赖网络)", "⚡ 混合语音 (短文本极速本地响应)"])
+        
+        tts_label = QLabel("引擎工作模式")
+        tts_label.setProperty("class", "input-label")
+        engine_layout.addWidget(tts_label)
+        engine_layout.addWidget(self.tts_combo)
+        
+        self.ai_tts_provider_combo = QComboBox()
+        self.ai_tts_provider_combo.addItems(["Edge TTS (免费/稳定)", "小米 MiMo TTS (高级)"])
+        
+        provider_label = QLabel("云端 AI 提供商")
+        provider_label.setProperty("class", "input-label")
+        engine_layout.addWidget(provider_label)
+        engine_layout.addWidget(self.ai_tts_provider_combo)
+
+        engine_card = self.create_card("语音引擎设置", "配置文本朗读的基础行为和提供商。", engine_layout)
+        layout.addWidget(engine_card)
+
+        # Xiaomi Card
+        xiaomi_layout = QVBoxLayout()
+        xiaomi_layout.setSpacing(10)
+
+        self.xiaomi_key_input = QLineEdit()
+        self.xiaomi_key_input.setEchoMode(QLineEdit.Password)
+        self.xiaomi_key_input.setPlaceholderText("填写 API Key")
+        
+        x_key_lbl = QLabel("API Key")
+        x_key_lbl.setProperty("class", "input-label")
+        xiaomi_layout.addWidget(x_key_lbl)
+        xiaomi_layout.addWidget(self.xiaomi_key_input)
+
+        row_layout = QHBoxLayout()
+        row_layout.setSpacing(15)
+        
+        col1 = QVBoxLayout()
+        self.xiaomi_model_input = QLineEdit()
+        self.xiaomi_model_input.setPlaceholderText("mimo-v2.5-tts")
+        m_lbl = QLabel("模型")
+        m_lbl.setProperty("class", "input-label")
+        col1.addWidget(m_lbl)
+        col1.addWidget(self.xiaomi_model_input)
+        
+        col2 = QVBoxLayout()
+        self.xiaomi_voice_combo = QComboBox()
+        self.xiaomi_voice_combo.addItems(["mimo_default", "冰糖", "茉莉", "苏打", "白桦", "Mia", "Chloe", "Milo", "Dean"])
+        v_lbl = QLabel("音色")
+        v_lbl.setProperty("class", "input-label")
+        col2.addWidget(v_lbl)
+        col2.addWidget(self.xiaomi_voice_combo)
+        
+        row_layout.addLayout(col1)
+        row_layout.addLayout(col2)
+        xiaomi_layout.addLayout(row_layout)
+
+        self.xiaomi_base_input = QLineEdit()
+        self.xiaomi_base_input.setPlaceholderText("https://token-plan-cn.xiaomimimo.com/v1")
+        b_lbl = QLabel("Base URL")
+        b_lbl.setProperty("class", "input-label")
+        xiaomi_layout.addWidget(b_lbl)
+        xiaomi_layout.addWidget(self.xiaomi_base_input)
+
+        self.xiaomi_style_input = QTextEdit()
+        self.xiaomi_style_input.setFixedHeight(72)
+        self.xiaomi_style_input.setAcceptRichText(False)
+        self.xiaomi_style_input.setPlaceholderText("例如：温柔、东北话、(粤语)、用轻快上扬的语调朗读")
+        s_lbl = QLabel("特殊风格 (Style)")
+        s_lbl.setProperty("class", "input-label")
+        xiaomi_layout.addWidget(s_lbl)
+        xiaomi_layout.addWidget(self.xiaomi_style_input)
+        style_hint = QLabel(
+            "风格示例：开心/悲伤/愤怒/平静/冷漠；温柔/高冷/活泼/严肃/慵懒；"
+            "磁性/清亮/甜美/沙哑；夹子音/御姐音/正太音/大叔音；"
+            "东北话/四川话/河南话/粤语；孙悟空/林黛玉；(唱歌)"
+        )
+        style_hint.setProperty("class", "card-desc")
+        style_hint.setWordWrap(True)
+        xiaomi_layout.addWidget(style_hint)
+
+        xiaomi_card = self.create_card("小米 MiMo 专属配置", "仅当上方提供商选择小米 MiMo 时生效。", xiaomi_layout)
+        
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setFrameShape(QFrame.NoFrame)
+        scroll_area.setStyleSheet("QScrollArea { background-color: transparent; }")
+        
+        inner_widget = QWidget()
+        inner_widget.setStyleSheet("QWidget { background-color: transparent; }")
+        inner_layout = QVBoxLayout(inner_widget)
+        inner_layout.setContentsMargins(0, 0, 0, 0)
+        inner_layout.addWidget(engine_card)
+        inner_layout.addWidget(xiaomi_card)
+        inner_layout.addStretch()
+        
+        scroll_area.setWidget(inner_widget)
+        layout.addWidget(scroll_area)
+        return page
+
+    def create_general_page(self):
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(20)
+
+        # General Card
+        g_layout = QVBoxLayout()
+        g_layout.setSpacing(10)
+
+        self.player_combo = QComboBox()
+        self.player_combo.addItems(["pygame (默认/兼容性极佳)", "mpv (增强音质/需额外下载)"])
+        self.player_combo.currentIndexChanged.connect(self._on_player_changed)
+        p_lbl = QLabel("音频播放底层驱动")
+        p_lbl.setProperty("class", "input-label")
+        g_layout.addWidget(p_lbl)
+        g_layout.addWidget(self.player_combo)
+
+        self.theme_combo = QComboBox()
+        self.theme_combo.addItems(["🌙 暗色主题 (Dark Mode)", "☀️ 浅色主题 (Light Mode)"])
+        self.theme_combo.currentIndexChanged.connect(self.apply_theme_from_combo)
+        t_lbl = QLabel("应用外观风格")
+        t_lbl.setProperty("class", "input-label")
+        g_layout.addWidget(t_lbl)
+        g_layout.addWidget(self.theme_combo)
+
+        # 快捷键配置区域
+        self.hotkey_show_edit = QKeySequenceEdit()
+        self.hotkey_show_edit.setToolTip("按键盘键组合设置唤醒热键")
+        show_lbl = QLabel("唤醒主界面快捷键")
+        show_lbl.setProperty("class", "input-label")
+        g_layout.addWidget(show_lbl)
+        g_layout.addWidget(self.hotkey_show_edit)
+
+        self.hotkey_snip_edit = QKeySequenceEdit()
+        self.hotkey_snip_edit.setToolTip("按键盘键组合设置截图翻译热键")
+        snip_lbl = QLabel("截图翻译快捷键")
+        snip_lbl.setProperty("class", "input-label")
+        g_layout.addWidget(snip_lbl)
+        g_layout.addWidget(self.hotkey_snip_edit)
+
+        card = self.create_card("通用与外观", "调整应用程序的基础行为和视觉体验。", g_layout)
+        layout.addWidget(card)
+        layout.addStretch()
+        return page
+
+    def _on_player_changed(self, index):
+        if index == 1:
+            from core.config import MPV_EXE, TOOL_DIR
+            if not MPV_EXE.exists():
+                QMessageBox.warning(self, "缺少 mpv", 
+                                    f"未检测到 mpv.exe。\n\n如需使用 mpv 播放器，请下载 Windows 版本的 mpv，并将解压后的 mpv.exe 放置在以下目录中：\n{TOOL_DIR}\n\n下载地址：https://mpv.io/installation/")
+                self.player_combo.setCurrentIndex(0)
+
+    def _load_current(self):
+        config = load_app_config()
+        self.key_input.setText(config.get("DOUBAO_API_KEY", ""))
+        self.ep_input.setText(config.get("DOUBAO_MODEL_EP", ""))
+        self.base_url_input.setText(config.get("AI_BASE_URL", "https://ark.cn-beijing.volces.com/api/v3"))
+        
+        use_local_tts = config.get("USE_LOCAL_TTS", True)
+        self.tts_combo.setCurrentIndex(1 if use_local_tts else 0)
+
+        ai_tts_provider = config.get("AI_TTS_PROVIDER", "edge")
+        self.ai_tts_provider_combo.setCurrentIndex(1 if ai_tts_provider == "xiaomi" else 0)
+        self.xiaomi_key_input.setText(config.get("XIAOMI_TTS_API_KEY", ""))
+        xiaomi_base_url = config.get("XIAOMI_TTS_BASE_URL", "https://token-plan-cn.xiaomimimo.com/v1")
+        self.xiaomi_base_input.setText(xiaomi_base_url)
+        xiaomi_model = config.get("XIAOMI_TTS_MODEL", "mimo-v2.5-tts")
+        if xiaomi_model == "mimo-v2-tts":
+            xiaomi_model = "mimo-v2.5-tts"
+        self.xiaomi_model_input.setText(xiaomi_model)
+        voice = config.get("XIAOMI_TTS_VOICE", "mimo_default")
+        voice_index = self.xiaomi_voice_combo.findText(voice)
+        self.xiaomi_voice_combo.setCurrentIndex(voice_index if voice_index >= 0 else 0)
+        self.xiaomi_style_input.setPlainText(config.get("XIAOMI_TTS_STYLE", ""))
+        
+        player_engine = config.get("AUDIO_PLAYER", "pygame")
+        self.player_combo.setCurrentIndex(1 if player_engine == "mpv" else 0)
+            
+        theme = config.get("THEME", "dark")
+        self.theme_combo.setCurrentIndex(1 if theme == "light" else 0)
+        
+        # 加载快捷键
+        show_hk = config.get("HOTKEY_SHOW", "Alt+Q")
+        snip_hk = config.get("HOTKEY_SNIP", "Alt+E")
+        self.hotkey_show_edit.setKeySequence(QKeySequence(show_hk))
+        self.hotkey_snip_edit.setKeySequence(QKeySequence(snip_hk))
+        
+        # Apply theme immediately on load
+        self.apply_theme_from_combo(self.theme_combo.currentIndex())
+
+    def apply_theme_from_combo(self, index):
+        is_light = (index == 1)
+        
+        if is_light:
+            bg_main = "#f6f8fd"
+            bg_sidebar = "#eef2fb"
+            bg_card = "rgba(255, 255, 255, 225)"
+            text_main = "#17233d"
+            text_desc = "#697691"
+            border_col = "#d8deee"
+            input_bg = "rgba(255, 255, 255, 235)"
+            input_border = "#d1d9eb"
+            list_hover = "#e4eaff"
+            list_selected = "#dfe6ff"
+            list_sel_text = "#3157f6"
+            btn_bg = "#ffffff"
+            btn_hover = "#edf1ff"
+            btn_text = "#35415d"
+            primary_bg = "#3157f6"
+            primary_hover = "#2648db"
+            divider_col = "#e3e7f1"
+        else:
+            bg_main = "#0d171d"
+            bg_sidebar = "#101d23"
+            bg_card = "#121f26"
+            text_main = "#eef5f4"
+            text_desc = "#91a4a5"
+            border_col = "#2a4148"
+            input_bg = "#101b21"
+            input_border = "#345158"
+            list_hover = "#15282e"
+            list_selected = "#12383b"
+            list_sel_text = "#20d2ce"
+            btn_bg = "#15252b"
+            btn_hover = "#1b3238"
+            btn_text = "#e4edec"
+            primary_bg = "#087f83"
+            primary_hover = "#09979b"
+            divider_col = "#263b42"
+
+        self._apply_sidebar_icons(text_main)
+        arrow_asset = self._combo_arrow_asset("light" if is_light else "dark", text_desc)
+
+        self.setStyleSheet(f"""
+            QDialog {{
+                background-color: {bg_main};
+                color: {text_main};
+                font-family: 'Segoe UI', 'Microsoft YaHei';
+            }}
+            
+            /* Sidebar styling */
+            QListWidget#sidebar {{
+                background-color: {bg_sidebar};
+                border: none;
+                border-right: 1px solid {border_col};
+                outline: none;
+                padding-top: 18px;
+            }}
+            QListWidget#sidebar::item {{
+                color: {text_main};
+                padding: 10px 20px;
+                margin: 5px 10px;
+                border-radius: 9px;
+                font-size: 14px;
+                font-weight: 500;
+            }}
+            QListWidget#sidebar::item:hover {{
+                background-color: {list_hover};
+            }}
+            QListWidget#sidebar::item:selected {{
+                background-color: {list_selected};
+                color: {list_sel_text};
+                font-weight: bold;
+                border-left: 3px solid {list_sel_text};
+            }}
+            
+            /* Right Area */
+            QWidget#rightWidget {{
+                background-color: {bg_main};
+            }}
+
+            /* Card styling */
+            QFrame.settings-card {{
+                background-color: {bg_card};
+                border: 1px solid {border_col};
+                border-radius: 14px;
+            }}
+            QLabel.card-title {{
+                color: {text_main};
+                font-size: 16px;
+                font-weight: bold;
+            }}
+            QLabel.card-desc {{
+                color: {text_desc};
+                font-size: 12px;
+            }}
+            QFrame.card-divider {{
+                background-color: {divider_col};
+                max-height: 1px;
+                border: none;
+                margin: 5px 0;
+            }}
+
+            /* Input styling */
+            QLabel.input-label {{
+                color: {text_main};
+                font-size: 13px;
+                font-weight: 500;
+            }}
+            QLineEdit, QTextEdit, QComboBox, QKeySequenceEdit {{
+                background-color: {input_bg};
+                color: {text_main};
+                border: 1px solid {input_border};
+                border-radius: 8px;
+                padding: 8px 12px;
+                font-size: 13px;
+            }}
+            QLineEdit:focus, QTextEdit:focus, QComboBox:focus, QKeySequenceEdit:focus {{
+                border: 1px solid {primary_bg};
+            }}
+            QComboBox {{
+                padding-right: 34px;
+            }}
+            QComboBox::drop-down {{
+                background-color: transparent;
+                border: none;
+                width: 32px;
+            }}
+            QComboBox::down-arrow {{
+                image: url("{arrow_asset}");
+                width: 12px;
+                height: 8px;
+            }}
+
+            /* Button styling */
+            QPushButton {{
+                background-color: {btn_bg};
+                color: {btn_text};
+                border: 1px solid {input_border};
+                border-radius: 8px;
+                padding: 8px 20px;
+                font-size: 13px;
+                font-weight: bold;
+            }}
+            QPushButton:hover {{
+                background-color: {btn_hover};
+            }}
+            QPushButton#saveBtn {{
+                background-color: {primary_bg};
+                color: white;
+                border: none;
+            }}
+            QPushButton#saveBtn:hover {{
+                background-color: {primary_hover};
+            }}
+
+            /* Native message boxes do not reliably inherit QDialog text colors. */
+            QMessageBox {{
+                background-color: {bg_card};
+            }}
+            QMessageBox QLabel {{
+                color: {text_main};
+                background-color: transparent;
+                font-size: 13px;
+            }}
+            QMessageBox QPushButton {{
+                min-width: 64px;
+                background-color: {btn_bg};
+                color: {btn_text};
+                border: 1px solid {input_border};
+            }}
+            QMessageBox QPushButton:hover {{
+                background-color: {btn_hover};
+            }}
+            
+            /* ScrollBar */
+            QScrollBar:vertical {{
+                border: none;
+                background: transparent;
+                width: 6px;
+                margin: 0px;
+            }}
+            QScrollBar::handle:vertical {{
+                background: {text_desc};
+                min-height: 20px;
+                border-radius: 3px;
+            }}
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
+                border: none;
+                background: none;
+            }}
+        """)
+
+    def save_settings(self):
+        theme_val = "light" if self.theme_combo.currentIndex() == 1 else "dark"
+        use_local_tts_val = (self.tts_combo.currentIndex() == 1)
+        ai_tts_provider = "xiaomi" if self.ai_tts_provider_combo.currentIndex() == 1 else "edge"
+        new_config = {
+            "DOUBAO_API_KEY": self.key_input.text().strip(),
+            "DOUBAO_MODEL_EP": self.ep_input.text().strip(),
+            "AI_BASE_URL": self.base_url_input.text().strip(),
+            "THEME": theme_val,
+            "USE_LOCAL_TTS": use_local_tts_val,
+            "AI_TTS_PROVIDER": ai_tts_provider,
+            "XIAOMI_TTS_API_KEY": self.xiaomi_key_input.text().strip(),
+            "XIAOMI_TTS_BASE_URL": self.xiaomi_base_input.text().strip() or "https://token-plan-cn.xiaomimimo.com/v1",
+            "XIAOMI_TTS_MODEL": self.xiaomi_model_input.text().strip() or "mimo-v2.5-tts",
+            "XIAOMI_TTS_VOICE": self.xiaomi_voice_combo.currentText(),
+            "XIAOMI_TTS_STYLE": self.xiaomi_style_input.toPlainText().strip(),
+            "AUDIO_PLAYER": "mpv" if self.player_combo.currentIndex() == 1 else "pygame",
+            "HOTKEY_SHOW": self.hotkey_show_edit.keySequence().toString(),
+            "HOTKEY_SNIP": self.hotkey_snip_edit.keySequence().toString()
+        }
+        save_app_config(new_config)
+        QMessageBox.information(self, "成功", "设置已保存，立即生效！")
+        self.accept()
