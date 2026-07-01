@@ -138,4 +138,4 @@ lingoBridge/
 
 ## License
 
-MIT License
+MIT License Jinser Zhao
