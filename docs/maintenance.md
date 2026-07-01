@@ -19,6 +19,7 @@
 | `DOUBAO_API_KEY` | 火山引擎 / 豆包 API Key，留空时只使用 Google 翻译 |
 | `DOUBAO_MODEL_EP` | 豆包模型接入点 |
 | `THEME` | `light` 或 `dark` |
+| `AUTO_START` | 是否为当前 Windows 用户启用开机自动启动 |
 | `USE_LOCAL_TTS` | 是否启用短文本本地 Piper TTS |
 | `AI_TTS_PROVIDER` | AI 语音提供商，`edge` 或 `xiaomi` |
 | `XIAOMI_TTS_API_KEY` | 小米 MiMo TTS / 兼容网关 Key |

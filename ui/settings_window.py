@@ -1,9 +1,10 @@
 from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, 
                                QLineEdit, QTextEdit, QPushButton, QMessageBox, QComboBox,
-                               QListWidget, QListWidgetItem, QStackedWidget, QWidget, QFrame, QScrollArea, QKeySequenceEdit, QStyle)
+                               QListWidget, QListWidgetItem, QStackedWidget, QWidget, QFrame, QScrollArea, QKeySequenceEdit, QStyle, QCheckBox)
 from PySide6.QtCore import Qt, QSize
 from PySide6.QtGui import QIcon, QKeySequence, QColor, QPainter, QPixmap, QPen
 from core.config import load_app_config, save_app_config, ICON_PATH, USER_DATA_DIR
+from utils.autostart import is_autostart_enabled, set_autostart_enabled
 
 class SettingsWindow(QDialog):
     def __init__(self, parent=None):
@@ -331,6 +332,14 @@ class SettingsWindow(QDialog):
         g_layout.addWidget(t_lbl)
         g_layout.addWidget(self.theme_combo)
 
+        self.autostart_check = QCheckBox("开机时自动启动 lingoBridge")
+        self.autostart_check.setToolTip("登录 Windows 后自动在系统托盘中启动")
+        g_layout.addWidget(self.autostart_check)
+
+        autostart_hint = QLabel("自动启动时不会弹出主窗口，也不会申请管理员权限。")
+        autostart_hint.setProperty("class", "card-desc")
+        g_layout.addWidget(autostart_hint)
+
         # 快捷键配置区域
         self.hotkey_show_edit = QKeySequenceEdit()
         self.hotkey_show_edit.setToolTip("按键盘键组合设置唤醒热键")
@@ -387,6 +396,7 @@ class SettingsWindow(QDialog):
             
         theme = config.get("THEME", "dark")
         self.theme_combo.setCurrentIndex(1 if theme == "light" else 0)
+        self.autostart_check.setChecked(is_autostart_enabled())
         
         # 加载快捷键
         show_hk = config.get("HOTKEY_SHOW", "Alt+Q")
@@ -514,6 +524,12 @@ class SettingsWindow(QDialog):
                 padding: 8px 12px;
                 font-size: 13px;
             }}
+            QCheckBox {{
+                color: {text_main};
+                font-size: 13px;
+                spacing: 9px;
+                padding-top: 6px;
+            }}
             QLineEdit:focus, QTextEdit:focus, QComboBox:focus, QKeySequenceEdit:focus {{
                 border: 1px solid {primary_bg};
             }}
@@ -594,6 +610,12 @@ class SettingsWindow(QDialog):
         theme_val = "light" if self.theme_combo.currentIndex() == 1 else "dark"
         use_local_tts_val = (self.tts_combo.currentIndex() == 1)
         ai_tts_provider = "xiaomi" if self.ai_tts_provider_combo.currentIndex() == 1 else "edge"
+        autostart_enabled = self.autostart_check.isChecked()
+        try:
+            set_autostart_enabled(autostart_enabled)
+        except OSError as e:
+            QMessageBox.warning(self, "无法更新开机启动", f"写入 Windows 启动项失败：\n{e}")
+            return
         new_config = {
             "DOUBAO_API_KEY": self.key_input.text().strip(),
             "DOUBAO_MODEL_EP": self.ep_input.text().strip(),
@@ -607,6 +629,7 @@ class SettingsWindow(QDialog):
             "XIAOMI_TTS_VOICE": self.xiaomi_voice_combo.currentText(),
             "XIAOMI_TTS_STYLE": self.xiaomi_style_input.toPlainText().strip(),
             "AUDIO_PLAYER": "mpv" if self.player_combo.currentIndex() == 1 else "pygame",
+            "AUTO_START": autostart_enabled,
             "HOTKEY_SHOW": self.hotkey_show_edit.keySequence().toString(),
             "HOTKEY_SNIP": self.hotkey_snip_edit.keySequence().toString()
         }
