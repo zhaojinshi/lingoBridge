@@ -1,6 +1,7 @@
 {
     "DOUBAO_API_KEY": "",
     "DOUBAO_MODEL_EP": "",
+    "AI_AUTO_TRANSLATE": false,
     "THEME": "light",
     "AUTO_START": false,
     "USE_LOCAL_TTS": true,

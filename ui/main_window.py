@@ -22,6 +22,7 @@ from utils.win_api import (WM_HOTKEY, WM_CLIPBOARDUPDATE, HOTKEY_ID_SHOW, HOTKEY
 
 class FloatingWindow(QWidget, Ui_FloatingWindow):
     request_translation_signal = Signal(str)
+    request_ai_translation_signal = Signal(str)
     show_window_signal = Signal()
     trigger_snipping_signal = Signal()
     tts_status_signal = Signal(str)
@@ -86,6 +87,12 @@ class FloatingWindow(QWidget, Ui_FloatingWindow):
             
             self.request_translation_signal.emit(text)
 
+    def on_ai_translate_clicked(self):
+        text = self.input_edit.toPlainText().strip()
+        if text and text == getattr(self, '_last_translated_text', ''):
+            self.ai_translate_btn.setEnabled(False)
+            self.request_ai_translation_signal.emit(text)
+
     def _update_window_width(self, text=""):
         if not text:
             text = getattr(self, 'current_text_for_speech', '') or ''
@@ -100,6 +107,7 @@ class FloatingWindow(QWidget, Ui_FloatingWindow):
         self.main_scroll.setMinimumHeight(0)
         self.main_scroll.setMaximumHeight(16777215)
         self.play_btn.hide()
+        self.ai_translate_btn.hide()
 
     def show_results(self):
         self.main_scroll.show()
@@ -112,6 +120,8 @@ class FloatingWindow(QWidget, Ui_FloatingWindow):
     def apply_theme(self):
         config = load_app_config()
         self.theme = config.get("THEME", "dark")
+        model_name = config.get("DOUBAO_MODEL_EP", "").strip()
+        self.ai_title_lbl.setText(f"AI   {model_name}" if model_name else "AI 翻译")
         apply_window_theme(self, self.theme)
         
         if hasattr(self, '_last_results') and self._last_results:
@@ -122,6 +132,7 @@ class FloatingWindow(QWidget, Ui_FloatingWindow):
         self.worker = TranslatorWorker()
         self.worker.moveToThread(self.thread)
         self.request_translation_signal.connect(self.worker.do_work)
+        self.request_ai_translation_signal.connect(self.worker.do_ai_work)
         self.worker.finished_signal.connect(self.update_translation)
         self.thread.start()
 
@@ -352,6 +363,7 @@ class FloatingWindow(QWidget, Ui_FloatingWindow):
         doubao_loading = results.get("doubao_loading", False)
         google_loading = results.get("google_loading", False)
         ai_enabled = results.get("ai_enabled", True)
+        ai_requested = results.get("ai_requested", False)
         
         # 智能动态音标：如果输入的是中文，没有生成音标，但翻译结果是简短的英文，提取英文的音标
         if not phonetic:
@@ -374,11 +386,14 @@ class FloatingWindow(QWidget, Ui_FloatingWindow):
         # AI 结果分立卡片渲染
         if not ai_enabled:
             self.ai_title_lbl.hide()
+            self.ai_translate_btn.hide()
             self.ai_result_lbl.hide()
             self._base_ai_html = ""
         else:
             self.ai_title_lbl.show()
-            self.ai_result_lbl.show()
+            self.ai_translate_btn.setVisible(not ai_requested)
+            self.ai_translate_btn.setEnabled(not doubao_loading)
+            self.ai_result_lbl.setVisible(ai_requested)
             
             ai_html = ""
             if phonetic:
@@ -391,8 +406,11 @@ class FloatingWindow(QWidget, Ui_FloatingWindow):
             else:
                 ai_html += f"<div>{doubao}</div>"
             
-            self.ai_result_lbl.setText(ai_html)
-            self._base_ai_html = ai_html
+            if ai_requested:
+                self.ai_result_lbl.setText(ai_html)
+                self._base_ai_html = ai_html
+            else:
+                self._base_ai_html = ""
 
         # Google 结果分立卡片渲染
         self.google_title_lbl.show()

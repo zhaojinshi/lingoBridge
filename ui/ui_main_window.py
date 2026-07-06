@@ -91,7 +91,12 @@ class Ui_FloatingWindow:
         window.scroll_layout.setSpacing(12)
 
         # 1. 豆包 AI 结果区域
-        window.ai_title_lbl = QLabel("AI   Mimo AI")
+        window.ai_title_lbl = QLabel("AI 翻译")
+        window.ai_title_lbl.setTextFormat(Qt.PlainText)
+        window.ai_translate_btn = QPushButton("AI 翻译")
+        window.ai_translate_btn.setFixedHeight(28)
+        window.ai_translate_btn.setCursor(Qt.PointingHandCursor)
+        window.ai_translate_btn.clicked.connect(window.on_ai_translate_clicked)
         window.ai_result_lbl = QLabel()
         window.ai_result_lbl.setWordWrap(True)
         window.ai_result_lbl.setTextFormat(Qt.RichText)
@@ -106,7 +111,12 @@ class Ui_FloatingWindow:
         window.google_result_lbl.setOpenExternalLinks(True)
         window.google_result_lbl.setTextInteractionFlags(Qt.TextSelectableByMouse | Qt.LinksAccessibleByMouse)
         
-        window.scroll_layout.addWidget(window.ai_title_lbl)
+        window.ai_header_layout = QHBoxLayout()
+        window.ai_header_layout.setContentsMargins(0, 0, 0, 0)
+        window.ai_header_layout.addWidget(window.ai_title_lbl)
+        window.ai_header_layout.addStretch()
+        window.ai_header_layout.addWidget(window.ai_translate_btn)
+        window.scroll_layout.addLayout(window.ai_header_layout)
         window.scroll_layout.addWidget(window.ai_result_lbl)
         window.scroll_layout.addWidget(window.google_title_lbl)
         window.scroll_layout.addWidget(window.google_result_lbl)
@@ -251,10 +261,24 @@ def apply_window_theme(window, theme_name):
         }}
     """)
 
+    bubble_bg = window.html_vars.get('bubble_bg')
     window.ai_title_lbl.setStyleSheet(f"QLabel {{ color: {window.html_vars.get('ai_title')}; background: {selected_bg}; border-radius: 6px; font-family: 'Segoe UI', 'Microsoft YaHei'; font-size: 13px; font-weight: 650; padding: 5px 8px; }}")
+    window.ai_translate_btn.setStyleSheet(f"""
+        QPushButton {{
+            background: {selected_bg};
+            color: {window.html_vars.get('ai_title')};
+            border: 1px solid {border_color};
+            border-radius: 7px;
+            padding: 0 12px;
+            font-family: 'Segoe UI', 'Microsoft YaHei';
+            font-size: 12px;
+            font-weight: 600;
+        }}
+        QPushButton:hover {{ background: {bubble_bg}; }}
+        QPushButton:disabled {{ color: {close_btn_color}; }}
+    """)
     window.google_title_lbl.setStyleSheet(f"QLabel {{ color: {window.html_vars.get('google_title')}; background: {selected_bg}; border-radius: 6px; font-family: 'Segoe UI', 'Microsoft YaHei'; font-size: 13px; font-weight: 650; padding: 5px 8px; }}")
     
-    bubble_bg = window.html_vars.get('bubble_bg')
     window.ai_result_lbl.setStyleSheet(f"QLabel {{ color: {result_text}; background: {bubble_bg}; border-radius: 9px; font-family: 'Segoe UI', 'Microsoft YaHei'; font-size: 14px; padding: 13px 14px; margin-bottom: 4px; line-height: 1.6; border: 1px solid {border_color}; }}")
     window.google_result_lbl.setStyleSheet(f"QLabel {{ color: {result_text}; background: {bubble_bg}; border-radius: 9px; font-family: 'Segoe UI', 'Microsoft YaHei'; font-size: 14px; padding: 13px 14px; line-height: 1.6; border: 1px solid {border_color}; }}")
     

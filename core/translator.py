@@ -116,6 +116,7 @@ class TranslatorWorker(QObject):
         config = load_app_config()
         api_key = config.get("DOUBAO_API_KEY", "").strip()
         self.model_ep = config.get("DOUBAO_MODEL_EP", "").strip()
+        self.ai_auto_translate = bool(config.get("AI_AUTO_TRANSLATE", False))
         base_url = config.get("AI_BASE_URL", "https://ark.cn-beijing.volces.com/api/v3").strip()
         if not base_url:
             base_url = "https://ark.cn-beijing.volces.com/api/v3"
@@ -146,16 +147,18 @@ class TranslatorWorker(QObject):
             "doubao": "", 
             "google": "", 
             "phonetic": phonetic_symbol(text),
-            "ai_enabled": ai_enabled
+            "ai_enabled": ai_enabled,
+            "ai_requested": ai_enabled and self.ai_auto_translate
         }
+        self._active_text = text
+        self._active_results = results
         google_source, google_target = choose_google_translation_args(text)
 
         def refresh_ui(loading_status=None):
             if self._current_task_id == task_id:
-                out = dict(results)
                 if loading_status:
-                    out.update(loading_status)
-                self.finished_signal.emit(out)
+                    results.update(loading_status)
+                self.finished_signal.emit(dict(results))
 
         # 🚀 任务 A: 豆包大模型
         def task_doubao():
@@ -205,6 +208,8 @@ class TranslatorWorker(QObject):
             
             refresh_ui({"doubao_loading": False})
 
+        self._active_ai_task = task_doubao
+
         # 🏃‍♂️ 任务 B: Google
         def task_google():
             try:
@@ -219,8 +224,24 @@ class TranslatorWorker(QObject):
             refresh_ui({"google_loading": False})
 
         # 触发初始加载状态
-        refresh_ui({"doubao_loading": ai_enabled, "google_loading": True})
+        refresh_ui({"doubao_loading": results["ai_requested"], "google_loading": True})
 
-        if ai_enabled:
+        if results["ai_requested"]:
             self.executor.submit(task_doubao)
         self.executor.submit(task_google)
+
+    @Slot(str)
+    def do_ai_work(self, text):
+        """仅在用户主动点击后启动当前文本的 AI 翻译。"""
+        if not self.db_client or text != getattr(self, "_active_text", None):
+            return
+
+        results = getattr(self, "_active_results", None)
+        task = getattr(self, "_active_ai_task", None)
+        if not results or not task or results.get("ai_requested"):
+            return
+
+        results["ai_requested"] = True
+        results["doubao_loading"] = True
+        self.finished_signal.emit(dict(results))
+        self.executor.submit(task)

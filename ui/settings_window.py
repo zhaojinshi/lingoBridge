@@ -189,6 +189,14 @@ class SettingsWindow(QDialog):
         v_layout.addWidget(base_url_label)
         v_layout.addWidget(self.base_url_input)
 
+        self.ai_translate_mode_combo = QComboBox()
+        self.ai_translate_mode_combo.addItems(["点击按钮翻译", "自动翻译"])
+
+        mode_label = QLabel("AI 翻译触发方式")
+        mode_label.setProperty("class", "input-label")
+        v_layout.addWidget(mode_label)
+        v_layout.addWidget(self.ai_translate_mode_combo)
+
         card = self.create_card(
             "AI 大模型配置 (兼容 OpenAI 格式)", 
             "填写配置以启用高级AI翻译。如果留空，系统将默认回退到基础的 Google 纯享翻译模式。", 
@@ -373,6 +381,7 @@ class SettingsWindow(QDialog):
         self.key_input.setText(config.get("DOUBAO_API_KEY", ""))
         self.ep_input.setText(config.get("DOUBAO_MODEL_EP", ""))
         self.base_url_input.setText(config.get("AI_BASE_URL", "https://ark.cn-beijing.volces.com/api/v3"))
+        self.ai_translate_mode_combo.setCurrentIndex(1 if config.get("AI_AUTO_TRANSLATE", False) else 0)
         
         use_local_tts = config.get("USE_LOCAL_TTS", True)
         self.tts_combo.setCurrentIndex(1 if use_local_tts else 0)
@@ -534,12 +543,21 @@ class SettingsWindow(QDialog):
                 border: 1px solid {primary_bg};
             }}
             QComboBox {{
-                padding-right: 34px;
+                min-height: 20px;
+                padding: 7px 38px 7px 12px;
+            }}
+            QComboBox:hover {{
+                border-color: {text_desc};
+                background-color: {btn_hover};
+            }}
+            QComboBox:on {{
+                border-color: {primary_bg};
+                background-color: {input_bg};
             }}
             QComboBox::drop-down {{
                 background-color: transparent;
                 border: none;
-                width: 32px;
+                width: 36px;
             }}
             QComboBox::down-arrow {{
                 image: url("{arrow_asset}");
@@ -606,6 +624,46 @@ class SettingsWindow(QDialog):
             }}
         """)
 
+        # QComboBox 的弹出列表是独立窗口，单独设置才能避免 Windows 原生白底样式。
+        popup_style = f"""
+            QAbstractItemView {{
+                background-color: {bg_card};
+                color: {text_main};
+                border: 1px solid {input_border};
+                border-radius: 8px;
+                padding: 3px;
+                outline: 0;
+                font-family: 'Segoe UI', 'Microsoft YaHei';
+                font-size: 13px;
+            }}
+            QAbstractItemView::item {{
+                min-height: 26px;
+                padding: 0 8px;
+                border: none;
+                border-radius: 6px;
+            }}
+            QAbstractItemView::item:hover {{
+                background-color: {list_hover};
+                color: {text_main};
+            }}
+            QAbstractItemView::item:selected {{
+                background-color: {list_selected};
+                color: {list_sel_text};
+                font-weight: 600;
+            }}
+        """
+        for combo in self.findChildren(QComboBox):
+            view = combo.view()
+            view.setSpacing(1)
+            view.setUniformItemSizes(True)
+            view.setStyleSheet(popup_style)
+            popup = view.window()
+            if isinstance(popup, QFrame):
+                popup.setFrameShape(QFrame.NoFrame)
+                popup.setLineWidth(0)
+                popup.setContentsMargins(0, 0, 0, 0)
+            popup.setStyleSheet(f"background-color: {bg_card}; border: none;")
+
     def save_settings(self):
         theme_val = "light" if self.theme_combo.currentIndex() == 1 else "dark"
         use_local_tts_val = (self.tts_combo.currentIndex() == 1)
@@ -620,6 +678,7 @@ class SettingsWindow(QDialog):
             "DOUBAO_API_KEY": self.key_input.text().strip(),
             "DOUBAO_MODEL_EP": self.ep_input.text().strip(),
             "AI_BASE_URL": self.base_url_input.text().strip(),
+            "AI_AUTO_TRANSLATE": self.ai_translate_mode_combo.currentIndex() == 1,
             "THEME": theme_val,
             "USE_LOCAL_TTS": use_local_tts_val,
             "AI_TTS_PROVIDER": ai_tts_provider,
