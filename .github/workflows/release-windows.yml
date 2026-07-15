@@ -1,0 +1,68 @@
+name: Build Windows app
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          architecture: "x64"
+          cache: pip
+
+      - name: Install dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+
+      - name: Build application
+        shell: pwsh
+        run: python build_exe.py
+
+      - name: Verify and package application
+        shell: pwsh
+        run: |
+          $executable = "dist\lingoBridge\lingoBridge.exe"
+          if (-not (Test-Path -LiteralPath $executable)) {
+            throw "Build output was not found: $executable"
+          }
+
+          Compress-Archive `
+            -Path "dist\lingoBridge\*" `
+            -DestinationPath "lingoBridge-Windows-x64.zip" `
+            -CompressionLevel Optimal `
+            -Force
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: lingoBridge-Windows-x64
+          path: lingoBridge-Windows-x64.zip
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ github.ref_name }}" `
+            "lingoBridge-Windows-x64.zip" `
+            --title "lingoBridge ${{ github.ref_name }}" `
+            --generate-notes

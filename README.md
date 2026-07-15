@@ -109,6 +109,21 @@ python build_exe.py
 dist\lingoBridge\lingoBridge.exe
 ```
 
+### 在 GitHub 自动发布可下载版本
+
+仓库包含 GitHub Actions 自动打包配置。推送以 `v` 开头的版本标签后，GitHub 会在 Windows 环境中构建程序、创建 Release，并上传免安装压缩包 `lingoBridge-Windows-x64.zip`：
+
+```powershell
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+构建完成后，用户可以进入仓库右侧的 **Releases** 页面下载压缩包，解压后运行 `lingoBridge.exe`。
+
+如需在正式发布前测试打包，可打开仓库的 **Actions** 页面，选择 **Build Windows app**，点击 **Run workflow**。手动构建的压缩包会出现在该次任务的 **Artifacts** 区域，并保留 30 天；只有版本标签触发的构建才会创建 Release。
+
+项目的完整版本历史记录在 [`CHANGELOG.md`](CHANGELOG.md)。每次发布前请先把“未发布”内容整理到对应版本下并提交，然后再推送版本标签；GitHub Release 页面还会根据本版本包含的提交和 Pull Request 自动生成更新说明。
+
 如需在构建完成后复制到指定发布目录：
 
 ```powershell
