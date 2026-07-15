@@ -111,18 +111,19 @@ dist\lingoBridge\lingoBridge.exe
 
 ### 在 GitHub 自动发布可下载版本
 
-仓库包含 GitHub Actions 自动打包配置。推送以 `v` 开头的版本标签后，GitHub 会在 Windows 环境中构建程序、创建 Release，并上传免安装压缩包 `lingoBridge-Windows-x64.zip`：
+仓库包含 GitHub Actions 自动发布配置。每次向 `main` 分支提交并推送代码后，GitHub 会自动生成新版本号，在 Windows 环境中构建程序、创建 Release，并上传带版本号的免安装压缩包：
 
 ```powershell
-git tag v1.0.0
-git push origin v1.0.0
+git add .
+git commit -m "说明本次新增或修改的功能"
+git push origin main
 ```
 
-构建完成后，用户可以进入仓库右侧的 **Releases** 页面下载压缩包，解压后运行 `lingoBridge.exe`。
+构建完成后，用户可以进入仓库右侧的 **Releases** 页面下载压缩包，解压后运行 `lingoBridge.exe`。每个 Release 页面会根据本次提交信息自动显示“版本功能说明”，并额外提供一份可下载的 `release-notes.md` 文档。提交说明写得越清楚，自动生成的版本功能说明就越准确。
 
-如需在正式发布前测试打包，可打开仓库的 **Actions** 页面，选择 **Build Windows app**，点击 **Run workflow**。手动构建的压缩包会出现在该次任务的 **Artifacts** 区域，并保留 30 天；只有版本标签触发的构建才会创建 Release。
+如需在不发布新版本的情况下测试打包，可打开仓库的 **Actions** 页面，选择 **Build and release Windows app**，点击 **Run workflow**。手动构建的压缩包和功能说明会出现在该次任务的 **Artifacts** 区域并保留 30 天，但不会创建 Release。
 
-项目的完整版本历史记录在 [`CHANGELOG.md`](CHANGELOG.md)。每次发布前请先把“未发布”内容整理到对应版本下并提交，然后再推送版本标签；GitHub Release 页面还会根据本版本包含的提交和 Pull Request 自动生成更新说明。
+项目也保留一份长期版本历史记录 [`CHANGELOG.md`](CHANGELOG.md)，而每次自动发布的具体功能说明以对应的 GitHub Release 页面为准。
 
 如需在构建完成后复制到指定发布目录：
 

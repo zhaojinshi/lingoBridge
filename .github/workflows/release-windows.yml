@@ -1,10 +1,10 @@
-name: Build Windows app
+name: Build and release Windows app
 
 on:
   workflow_dispatch:
   push:
-    tags:
-      - "v*"
+    branches:
+      - main
 
 permissions:
   contents: write
@@ -16,6 +16,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -34,8 +36,83 @@ jobs:
         shell: pwsh
         run: python build_exe.py
 
+      - name: Generate version and release notes
+        id: release_info
+        shell: pwsh
+        run: |
+          $shortSha = "${{ github.sha }}".Substring(0, 7)
+
+          if ("${{ github.event_name }}" -eq "push") {
+            $latestTag = git tag --list "v1.0.*" --sort=-v:refname | Select-Object -First 1
+            $patch = 0
+            if ($latestTag -match '^v1\.0\.(\d+)$') {
+              $patch = [int]$Matches[1] + 1
+            }
+            $version = "v1.0.$patch"
+          } else {
+            $version = "test-$shortSha"
+          }
+
+          $before = "${{ github.event.before }}"
+          $zeroSha = "0000000000000000000000000000000000000000"
+          if ("${{ github.event_name }}" -eq "push" -and $before -ne $zeroSha) {
+            $range = "$before..${{ github.sha }}"
+            $summary = git log --reverse '--pretty=format:- %s (`%h`)' $range
+            $details = git log --reverse '--pretty=format:### %s (`%h`)%n%n%b%n' $range
+            $changedFiles = git diff --name-status $before "${{ github.sha }}"
+          } else {
+            $summary = git log -1 '--pretty=format:- %s (`%h`)'
+            $details = git log -1 '--pretty=format:### %s (`%h`)%n%n%b%n'
+            $changedFiles = git show --pretty="" --name-status "${{ github.sha }}"
+          }
+
+          if (-not $changedFiles) {
+            $changedFiles = "无文件变更记录"
+          }
+
+          $summary = $summary -join [Environment]::NewLine
+          $details = $details -join [Environment]::NewLine
+          $changedFiles = $changedFiles -join [Environment]::NewLine
+
+          $notesFile = "lingoBridge-$version-release-notes.md"
+          $archive = "lingoBridge-$version-Windows-x64.zip"
+          $publishedAt = [DateTime]::UtcNow.ToString("yyyy-MM-dd HH:mm 'UTC'")
+
+          @"
+          # lingoBridge $version 功能说明
+
+          **发布时间：** $publishedAt<br>
+          **对应提交：** [$shortSha](https://github.com/${{ github.repository }}/commit/${{ github.sha }})
+
+          ## 本版本功能与改动
+
+          $summary
+
+          ## 提交详细说明
+
+          $details
+
+          ## 修改文件
+
+          ``````text
+          $changedFiles
+          ``````
+
+          ## 下载与运行
+
+          请下载本 Release 中的 ``$archive``，解压后运行 ``lingoBridge.exe``。
+
+          > Source code 压缩包是 GitHub 自动生成的源代码，普通用户不需要下载。
+          "@ | Set-Content -LiteralPath $notesFile -Encoding utf8
+
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "archive=$archive" >> $env:GITHUB_OUTPUT
+          "notes_file=$notesFile" >> $env:GITHUB_OUTPUT
+
       - name: Verify and package application
         shell: pwsh
+        env:
+          ARCHIVE_NAME: ${{ steps.release_info.outputs.archive }}
         run: |
           $executable = "dist\lingoBridge\lingoBridge.exe"
           if (-not (Test-Path -LiteralPath $executable)) {
@@ -44,25 +121,33 @@ jobs:
 
           Compress-Archive `
             -Path "dist\lingoBridge\*" `
-            -DestinationPath "lingoBridge-Windows-x64.zip" `
+            -DestinationPath $env:ARCHIVE_NAME `
             -CompressionLevel Optimal `
             -Force
 
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v4
         with:
-          name: lingoBridge-Windows-x64
-          path: lingoBridge-Windows-x64.zip
+          name: lingoBridge-${{ steps.release_info.outputs.version }}-Windows-x64
+          path: |
+            ${{ steps.release_info.outputs.archive }}
+            ${{ steps.release_info.outputs.notes_file }}
           if-no-files-found: error
           retention-days: 30
 
       - name: Publish GitHub Release
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: github.event_name == 'push'
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ steps.release_info.outputs.version }}
+          ARCHIVE_NAME: ${{ steps.release_info.outputs.archive }}
+          NOTES_FILE: ${{ steps.release_info.outputs.notes_file }}
         run: |
-          gh release create "${{ github.ref_name }}" `
-            "lingoBridge-Windows-x64.zip" `
-            --title "lingoBridge ${{ github.ref_name }}" `
-            --generate-notes
+          gh release create $env:RELEASE_VERSION `
+            "$env:ARCHIVE_NAME#Windows x64 免安装版" `
+            "$env:NOTES_FILE#版本功能说明" `
+            --target "${{ github.sha }}" `
+            --title "lingoBridge $env:RELEASE_VERSION" `
+            --notes-file $env:NOTES_FILE `
+            --latest
